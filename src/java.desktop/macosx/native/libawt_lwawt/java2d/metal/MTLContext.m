@@ -45,8 +45,10 @@ extern jboolean MTLSD_InitMTLWindow(JNIEnv *env, MTLSDOps *mtlsdo);
 extern MTLContext *MTLSD_MakeMTLContextCurrent(JNIEnv *env,
                                                MTLSDOps *srcOps,
                                                MTLSDOps *dstOps);
+NSString *getAlphaCompositeString(jint rule, jfloat extraAlpha);
 
 static id<MTLRenderCommandEncoder> commonRenderEncoder = NULL;
+static id<MTLTexture> commonRenderEncoderDest = NULL;
 
 #define RGBA_TO_V4(c)              \
 {                                  \
@@ -288,6 +290,9 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
     alphaCompositeRule = rule;
 }
 
+- (NSString*)getAlphaCompositeRuleString {
+    return getAlphaCompositeString(alphaCompositeRule, extraAlpha);
+}
 
 - (void)setXorComposite:(jint)xp {
     //TODO
@@ -392,7 +397,13 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
 
     if (compState == sun_java2d_SunGraphics2D_PAINT_ALPHACOLOR) {
         // set pipeline state
-        [encoder setRenderPipelineState:[self.pipelineStateStorage getRenderPipelineState:NO]];
+        if (((color >> 24) & 0xFF) < 255) {
+            //J2dRlsTraceLn(J2D_TRACE_INFO, "use AC render state");
+            [encoder setRenderPipelineState:[self.pipelineStateStorage getRenderPipelineState:NO isSourcePremultiplied:YES isDestPremultiplied:YES isSrcOpaque:NO isDstOpaque:NO compositeRule:RULE_SrcOver]];
+        } else {
+            //J2dRlsTraceLn(J2D_TRACE_INFO, "use non-AC render state");
+            [encoder setRenderPipelineState:[self.pipelineStateStorage getRenderPipelineState:NO]];
+        }
         struct FrameUniforms uf = {RGBA_TO_V4(color)};
         [encoder setVertexBytes:&uf length:sizeof(uf) atIndex:FrameUniformBuffer];
     } else if (compState == sun_java2d_SunGraphics2D_PAINT_GRADIENT) {
@@ -406,6 +417,17 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
                 RGBA_TO_V4(pixel2)};
 
         [encoder setFragmentBytes: &uf length:sizeof(uf) atIndex:0];
+    } else {
+        // set pipeline state
+        if (((color >> 24) & 0xFF) < 255) {
+            //J2dRlsTraceLn(J2D_TRACE_INFO, "use AC render state (comp is UNKNOWN)");
+            [encoder setRenderPipelineState:[self.pipelineStateStorage getRenderPipelineState:NO isSourcePremultiplied:YES isDestPremultiplied:YES isSrcOpaque:NO isDstOpaque:NO compositeRule:RULE_SrcOver]];
+        } else {
+            //J2dRlsTraceLn(J2D_TRACE_INFO, "use non-AC render state (comp is UNKNOWN)");
+            [encoder setRenderPipelineState:[self.pipelineStateStorage getRenderPipelineState:NO]];
+        }
+        struct FrameUniforms uf = {RGBA_TO_V4(color)};
+        [encoder setVertexBytes:&uf length:sizeof(uf) atIndex:FrameUniformBuffer];
     }
     [self setEncoderTransform:encoder dest:dest];
 }
@@ -423,8 +445,8 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
         struct TxtFrameUniforms uf = {RGBA_TO_V4(0), 0, isSrcOpaque, isDstOpaque };
         [encoder setFragmentBytes:&uf length:sizeof(uf) atIndex:FrameUniformBuffer];
     }
-    [encoder setRenderPipelineState:[pipelineStateStorage getTexturePipelineState:NO
-          isDestPremultiplied:NO
+    [encoder setRenderPipelineState:[pipelineStateStorage getTexturePipelineState:YES
+          isDestPremultiplied:YES
           isSrcOpaque:isSrcOpaque
           isDstOpaque:isDstOpaque
           compositeRule:alphaCompositeRule]];
@@ -432,20 +454,31 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
 }
 
 - (id<MTLBlitCommandEncoder>)createBlitEncoder {
+    [self endCommonRenderEncoder];
     return [[[self getCommandBufferWrapper] getCommandBuffer] blitCommandEncoder];
 }
 
 - (id<MTLRenderCommandEncoder>) createCommonRenderEncoderForDest:(id<MTLTexture>) dest {
+    if (commonRenderEncoderDest != dest && commonRenderEncoder != nil) {
+        J2dTraceLn2(J2D_TRACE_VERBOSE, "endCommonRenderEncoder because of dest change: %p -> %p", commonRenderEncoderDest, dest);
+        [self endCommonRenderEncoder];
+    }
     if (commonRenderEncoder == nil) {
         commonRenderEncoder = [self createEncoderForDest: dest];
+        commonRenderEncoderDest = dest;
     }
     [self updateRenderEncoderProperties:commonRenderEncoder dest:dest];
     return commonRenderEncoder;
 }
 
 - (id<MTLRenderCommandEncoder>)createCommonSamplingEncoderForDest:(id<MTLTexture>)dest isSrcOpaque:(bool)isSrcOpaque isDstOpaque:(bool)isDstOpaque {
+    if (commonRenderEncoderDest != dest && commonRenderEncoder != nil) {
+        J2dTraceLn2(J2D_TRACE_VERBOSE, "endCommonRenderEncoder(Sampling) because of dest change: %p -> %p", commonRenderEncoderDest, dest);
+        [self endCommonRenderEncoder];
+    }
     if (commonRenderEncoder == nil) {
         commonRenderEncoder = [self createEncoderForDest: dest];
+        commonRenderEncoderDest = dest;
     }
     [self updateRenderEncoderProperties:commonRenderEncoder dest:dest];
     [self updateSamplingEncoderProperties:commonRenderEncoder
@@ -461,6 +494,7 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
         [commonRenderEncoder endEncoding];
         [commonRenderEncoder release];
         commonRenderEncoder = nil;
+        commonRenderEncoderDest = nil;
     }
 }
 
@@ -500,6 +534,13 @@ MTLRenderPassDescriptor* createRenderPassDesc(id<MTLTexture> dest) {
     cyclic = _cyclic;
  }
 
+- (NSString *)getPaintStateString {
+    if (compState == sun_java2d_SunGraphics2D_PAINT_ALPHACOLOR) {
+        return [NSString stringWithFormat:@"[r=%d g=%d b=%d a=%d]", (color >> 16) & (0xFF), (color >> 8) & 0xFF, (color) & 0xFF, (color >> 24) & 0xFF];
+    }
+    return @"non-color-paint";
+ }
+
 @end
 
 /*
@@ -518,6 +559,78 @@ JNIEXPORT jstring JNICALL Java_sun_java2d_metal_MTLContext_getMTLIdString
     return NULL;
 }
 
-
+NSString * getAlphaCompositeString(jint rule, jfloat extraAlpha) {
+    const char * result = "";
+    switch (rule) {
+        case java_awt_AlphaComposite_CLEAR:
+        {
+            result = "CLEAR";
+        }
+            break;
+        case java_awt_AlphaComposite_SRC:
+        {
+            result = "SRC";
+        }
+            break;
+        case java_awt_AlphaComposite_DST:
+        {
+            result = "DST";
+        }
+            break;
+        case java_awt_AlphaComposite_SRC_OVER:
+        {
+            result = "SRC_OVER";
+        }
+            break;
+        case java_awt_AlphaComposite_DST_OVER:
+        {
+            result = "DST_OVER";
+        }
+            break;
+        case java_awt_AlphaComposite_SRC_IN:
+        {
+            result = "SRC_IN";
+        }
+            break;
+        case java_awt_AlphaComposite_DST_IN:
+        {
+            result = "DST_IN";
+        }
+            break;
+        case java_awt_AlphaComposite_SRC_OUT:
+        {
+            result = "SRC_OUT";
+        }
+            break;
+        case java_awt_AlphaComposite_DST_OUT:
+        {
+            result = "DST_OUT";
+        }
+            break;
+        case java_awt_AlphaComposite_SRC_ATOP:
+        {
+            result = "SRC_ATOP";
+        }
+            break;
+        case java_awt_AlphaComposite_DST_ATOP:
+        {
+            result = "DST_ATOP";
+        }
+            break;
+        case java_awt_AlphaComposite_XOR:
+        {
+            result = "XOR";
+        }
+            break;
+        default:
+            result = "UNKNOWN";
+            break;
+    }
+    const double epsilon = 0.001f;
+    if (fabs(extraAlpha - 1.f) > epsilon) {
+        return [NSString stringWithFormat:@"%s [%1.2f]", result, extraAlpha];
+    }
+    return [NSString stringWithFormat:@"%s", result];
+}
 
 #endif /* !HEADLESS */

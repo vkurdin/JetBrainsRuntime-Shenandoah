@@ -18,11 +18,18 @@ MTLRenderPipelineDescriptor * templateTexturePipelineDesc;
 @property (readwrite, retain) id<MTLLibrary> library;
 @property (readwrite, retain) NSMutableDictionary<NSString*, id<MTLFunction>> * shaders;
 @property (readwrite, retain) NSMutableDictionary<NSString*, id<MTLRenderPipelineState>> * states;
+@property (readwrite, retain) NSPointerArray * textureStates;
 @property (readwrite, retain) MTLRenderPipelineDescriptor * templateRenderPipelineDesc;
 @property (readwrite, retain) MTLRenderPipelineDescriptor * templateTexturePipelineDesc;
 
 - (id) initWithDevice:(id<MTLDevice>)device shaderLibPath:(NSString *)shadersLib;
 - (id<MTLRenderPipelineState>) getRenderPipelineState:(bool)isGradient;
+- (id<MTLRenderPipelineState>) getRenderPipelineState:(bool)isGradient
+                                 isSourcePremultiplied:(bool)isSourcePremultiplied
+                                   isDestPremultiplied:(bool)isDestPremultiplied
+                                           isSrcOpaque:(bool)isSrcOpaque
+                                           isDstOpaque:(bool)isDstOpaque
+                                         compositeRule:(int)compositeRule;
 - (id<MTLRenderPipelineState>) getTexturePipelineState:(bool)isSourcePremultiplied
     isDestPremultiplied:(bool)isDestPremultiplied
     isSrcOpaque:(bool)isSrcOpaque

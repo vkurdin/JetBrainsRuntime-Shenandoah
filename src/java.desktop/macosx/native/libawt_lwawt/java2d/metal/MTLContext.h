@@ -174,6 +174,10 @@ typedef struct {
 - (void)setAlphaCompositeRule:(jint)rule extraAlpha:(jfloat)extraAlpha
                         flags:(jint)flags;
 
+// debug-method
+- (NSString*)getAlphaCompositeRuleString;
+- (NSString*)getPaintStateString;
+
 /**
  * Initializes the OpenGL logic op state to XOR mode.  Blending is disabled
  * before enabling logic op mode.  The XOR pixel value will be applied

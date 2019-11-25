@@ -48,7 +48,7 @@ void MTLBlitLoops_IsoBlit(JNIEnv *env,
 
 void MTLBlitLoops_Blit(JNIEnv *env,
                        MTLContext *mtlc, jlong pSrcOps, jlong pDstOps,
-                       jboolean xform, jint hint,
+                       jboolean xform, jboolean scale, jint hint,
                        jint srctype, jboolean texture,
                        jint sx1, jint sy1,
                        jint sx2, jint sy2,

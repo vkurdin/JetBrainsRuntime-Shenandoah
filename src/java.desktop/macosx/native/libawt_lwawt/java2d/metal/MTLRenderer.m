@@ -241,15 +241,15 @@ MTLRenderer_FillRect(MTLContext *mtlc, BMTLSDOps * dstOps, jint x, jint y, jint 
     }
 
     struct Vertex verts[QUAD_VERTEX_COUNT] = {
-        { {x, y}},
-        { {x, y+h}},
-        { {x+w, y}},
-        { {x+w, y+h}
+        { {(float)x, (float)y}},
+        { {(float)x, (float)y+h}},
+        { {(float)x+w, (float)y}},
+        { {(float)x+w, (float)y+h}
     }};
 
 
     id<MTLTexture> dest = dstOps->pTexture;
-    J2dTraceLn5(J2D_TRACE_INFO, "MTLRenderer_FillRect (x=%d y=%d w=%d h=%d), dst tex=%p", x, y, w, h, dest);
+    //J2dTraceImpl(J2D_TRACE_INFO, 1, "MTLRenderer_FillRect [paint=%s]: (x=%d y=%d w=%d h=%d), dst tex=%p", [mtlc getPaintStateString].cString, x, y, w, h, dest);
 
     // Encode render command.
     id<MTLRenderCommandEncoder> mtlEncoder = [mtlc createCommonRenderEncoderForDest:dest];
@@ -334,14 +334,15 @@ MTLRenderer_FillParallelogram(MTLContext *mtlc, BMTLSDOps * dstOps,
     }
 
     id<MTLTexture> dest = dstOps->pTexture;
-    J2dTraceLn7(J2D_TRACE_INFO,
-                "MTLRenderer_FillParallelogram "
-                "(x=%6.2f y=%6.2f "
-                "dx1=%6.2f dy1=%6.2f "
-                "dx2=%6.2f dy2=%6.2f dst tex=%p)",
-                fx11, fy11,
-                dx21, dy21,
-                dx12, dy12, dest);
+//    J2dTraceImpl(J2D_TRACE_INFO, 1,
+//                "MTLRenderer_FillParallelogram [paint=%s]"
+//                "(x=%6.2f y=%6.2f "
+//                "dx1=%6.2f dy1=%6.2f "
+//                "dx2=%6.2f dy2=%6.2f dst tex=%p)",
+//                [mtlc getPaintStateString].cString,
+//                fx11, fy11,
+//                dx21, dy21,
+//                dx12, dy12, dest);
 
     struct Vertex verts[QUAD_VERTEX_COUNT] = {
             { {fx11, fy11}},

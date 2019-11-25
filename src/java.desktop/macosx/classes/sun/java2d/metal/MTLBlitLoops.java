@@ -252,7 +252,7 @@ final class MTLBlitLoops {
                      int sx2, int sy2,
                      double dx1, double dy1,
                      double dx2, double dy2,
-                     int srctype, boolean texture)
+                     int srctype, boolean texture, boolean scale)
     {
         int ctxflags = 0;
         if (srcData.getTransparency() == Transparency.OPAQUE) {
@@ -280,7 +280,7 @@ final class MTLBlitLoops {
             }
 
             int packedParams = createPackedParams(false, texture,
-                    false, xform != null,
+                    scale, xform != null,
                     hint, srctype);
             enqueueBlit(rq, srcData, dstData,
                     packedParams,
@@ -634,7 +634,7 @@ class MTLSwToSurfaceBlit extends Blit {
                 AffineTransformOp.TYPE_NEAREST_NEIGHBOR,
                 sx, sy, sx+w, sy+h,
                 dx, dy, dx+w, dy+h,
-                typeval, false);
+                typeval, false, false);
     }
 }
 
@@ -661,7 +661,7 @@ class MTLSwToSurfaceScale extends ScaledBlit {
                 AffineTransformOp.TYPE_NEAREST_NEIGHBOR,
                 sx1, sy1, sx2, sy2,
                 dx1, dy1, dx2, dy2,
-                typeval, false);
+                typeval, false, true);
     }
 }
 
@@ -685,7 +685,7 @@ class MTLSwToSurfaceTransform extends TransformBlit {
                 comp, clip, at, hint,
                 sx, sy, sx+w, sy+h,
                 dx, dy, dx+w, dy+h,
-                typeval, false);
+                typeval, false, false);
     }
 }
 
@@ -709,7 +709,7 @@ class MTLSwToTextureBlit extends Blit {
                 AffineTransformOp.TYPE_NEAREST_NEIGHBOR,
                 sx, sy, sx+w, sy+h,
                 dx, dy, dx+w, dy+h,
-                typeval, true);
+                typeval, true, false);
     }
 }
 

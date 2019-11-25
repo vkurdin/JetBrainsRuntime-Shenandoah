@@ -551,7 +551,7 @@ Java_sun_java2d_metal_MTLRenderQueue_flushBuffer
                 } else {
                     jint srctype = EXTRACT_BYTE(packedParams, OFFSET_SRCTYPE);
                     MTLBlitLoops_Blit(env, mtlc, pSrc, pDst,
-                                      xform, hint, srctype, texture,
+                                      xform, rtt, hint, srctype, texture,
                                       sx1, sy1, sx2, sy2,
                                       dx1, dy1, dx2, dy2);
                 }

@@ -1,3 +1,4 @@
+#define DEBUG 1
 #import "MTLPipelineStatesStorage.h"
 #import "Trace.h"
 
@@ -16,7 +17,7 @@ static void setBlendingFactors(MTLRenderPipelineColorAttachmentDescriptor * cad,
 @synthesize device;
 @synthesize library;
 @synthesize shaders;
-@synthesize states;
+@synthesize states, textureStates;
 @synthesize templateRenderPipelineDesc;
 @synthesize templateTexturePipelineDesc;
 
@@ -34,6 +35,7 @@ static void setBlendingFactors(MTLRenderPipelineColorAttachmentDescriptor * cad,
     }
     self.shaders = [NSMutableDictionary dictionaryWithCapacity:10];
     self.states = [NSMutableDictionary dictionaryWithCapacity:10];
+    self.textureStates = [NSPointerArray strongObjectsPointerArray];
 
     { // init template descriptors
         MTLVertexDescriptor *vertDesc = [[MTLVertexDescriptor new] autorelease];
@@ -69,10 +71,21 @@ static void setBlendingFactors(MTLRenderPipelineColorAttachmentDescriptor * cad,
 }
 
 - (id<MTLRenderPipelineState>) getRenderPipelineState:(bool)isGradient {
+    return [self getRenderPipelineState:isGradient isSourcePremultiplied:YES isDestPremultiplied:YES isSrcOpaque:NO isDstOpaque:NO compositeRule:RULE_Src];
+}
+
+- (id<MTLRenderPipelineState>) getRenderPipelineState:(bool)isGradient
+                                 isSourcePremultiplied:(bool)isSourcePremultiplied
+                                   isDestPremultiplied:(bool)isDestPremultiplied
+                                           isSrcOpaque:(bool)isSrcOpaque
+                                           isDstOpaque:(bool)isDstOpaque
+                                         compositeRule:(int)compositeRule {
 
     NSString * uid = @"render_grad[0]";
     if (isGradient == TRUE) {
         uid = @"render_grad[1]";
+    } else if (compositeRule == RULE_SrcOver) {
+        uid = @"render_grad[0]SrcOver";
     }
 
     id<MTLRenderPipelineState> result = [self.states valueForKey:uid];
@@ -83,6 +96,13 @@ static void setBlendingFactors(MTLRenderPipelineColorAttachmentDescriptor * cad,
         pipelineDesc.vertexFunction = vertexShader;
         pipelineDesc.fragmentFunction = fragmentShader;
         pipelineDesc.label = uid;
+
+        setBlendingFactors(
+                pipelineDesc.colorAttachments[0],
+                compositeRule,
+                isSourcePremultiplied, isDestPremultiplied,
+                isSrcOpaque, isDstOpaque
+        );
 
         NSError *error = nil;
         result = [self.device newRenderPipelineStateWithDescriptor:pipelineDesc error:&error];
@@ -103,10 +123,28 @@ static void setBlendingFactors(MTLRenderPipelineColorAttachmentDescriptor * cad,
     isDstOpaque:(bool)isDstOpaque
     compositeRule:(int)compositeRule
 {
-    @autoreleasepool {
-        NSString *uid = [NSString stringWithFormat:@"texture_compositeRule[%d]", compositeRule];
+    if (compositeRule < 0 || compositeRule >= java_awt_AlphaComposite_MAX_RULE) {
+        J2dRlsTraceLn1(J2D_TRACE_ERROR, "invalid index of composite-rule: %d", compositeRule);
+        return nil;
+    }
 
-        id <MTLRenderPipelineState> result = [self.states valueForKey:uid];
+    int subIndex = 0;
+    if (isSourcePremultiplied)
+        subIndex |= 1;
+    if (isDestPremultiplied)
+        subIndex |= 1 << 1;
+    if (isSrcOpaque)
+        subIndex |= 1 << 2;
+    if (isDstOpaque)
+        subIndex |= 1 << 3;
+    int index = compositeRule*16 + subIndex;
+
+    while (index >= [self.textureStates count]) {
+        [self.textureStates addPointer:NULL]; // obj-c collections haven't resize methods, so do that
+    }
+
+    @autoreleasepool {
+        id<MTLRenderPipelineState> result = [self.textureStates pointerAtIndex:index];
         if (result == nil) {
             id <MTLFunction> vertexShader = [self getShader:@"vert_txt"];
             id <MTLFunction> fragmentShader = [self getShader:@"frag_txt"];
@@ -124,11 +162,11 @@ static void setBlendingFactors(MTLRenderPipelineColorAttachmentDescriptor * cad,
             NSError *error = nil;
             result = [[self.device newRenderPipelineStateWithDescriptor:pipelineDesc error:&error] autorelease];
             if (result == nil) {
-                NSLog(@"Failed to create texture pipeline state '%@', error %@", uid, error);
+                NSLog(@"Failed to create texture pipeline state for rule '%d', error %@", compositeRule, error);
                 exit(0);
             }
 
-            [self.states setValue:result forKey:uid];
+            [self.textureStates insertPointer:result atIndex:index];
         }
 
         return result;
@@ -183,12 +221,16 @@ static void setBlendingFactors(
                 return;
             }
             if (isDstOpaque) {
-                J2dTraceLn(J2D_TRACE_ERROR, "Composite rule RULE_SrcOver with opaque dest isn't implemented (dst alpha won't be ignored)");
+                // Ar = 1, can be ignored, so
+                // Cr = Cs + Cd*(1-As)
+                // TODO: select any multiplier with best performance
+                // for example: cad.destinationAlphaBlendFactor = MTLBlendFactorZero;
+            } else {
+                cad.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
             }
             if (!isSourcePremultiplied) {
                 cad.sourceRGBBlendFactor = MTLBlendFactorSourceAlpha;
             }
-            cad.destinationAlphaBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
             cad.destinationRGBBlendFactor = MTLBlendFactorOneMinusSourceAlpha;
             J2dTraceLn(J2D_TRACE_VERBOSE, "set RULE_SrcOver");
             break;
