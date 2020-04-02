@@ -94,6 +94,8 @@ enum LoopOptsMode {
   LoopOptsDefault,
   LoopOptsNone,
   LoopOptsSkipSplitIf,
+  LoopOptsShenandoahExpand,
+  LoopOptsShenandoahPostExpand,
   LoopOptsVerify,
   LoopOptsLastRound
 };

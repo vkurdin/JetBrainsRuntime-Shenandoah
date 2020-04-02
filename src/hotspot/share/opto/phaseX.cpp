@@ -1395,7 +1395,7 @@ void PhaseIterGVN::remove_globally_dead_node( Node *dead ) {
                 assert(!(i < imax), "sanity");
               }
             } else {
-              BarrierSet::barrier_set()->barrier_set_c2()->enqueue_useful_gc_barrier(_worklist, in);
+              BarrierSet::barrier_set()->barrier_set_c2()->enqueue_useful_gc_barrier(this, in);
             }
             if (ReduceFieldZeroing && dead->is_Load() && i == MemNode::Memory &&
                 in->is_Proj() && in->in(0) != NULL && in->in(0)->is_Initialize()) {
@@ -1679,6 +1679,14 @@ void PhaseIterGVN::add_users_to_worklist( Node *n ) {
           }
           _worklist.push(u);
         }
+      }
+    }
+
+    // TODO: Needed after the block above?
+    if (use->is_ShenandoahBarrier()) {
+      Node* cmp = use->find_out_with(Op_CmpP);
+      if (cmp != NULL) {
+        _worklist.push(cmp);
       }
     }
   }
@@ -2108,6 +2116,10 @@ void Node::set_req_X( uint i, Node *n, PhaseIterGVN *igvn ) {
       break;
     default:
       break;
+    }
+    if (UseShenandoahGC) {
+      // TODO: Should we call this for ZGC as well?
+      BarrierSet::barrier_set()->barrier_set_c2()->enqueue_useful_gc_barrier(igvn, old);
     }
   }
 
